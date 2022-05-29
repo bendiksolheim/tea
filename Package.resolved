@@ -2,6 +2,15 @@
   "object": {
     "pins": [
       {
+        "package": "Bow",
+        "repositoryURL": "https://github.com/bow-swift/bow.git",
+        "state": {
+          "branch": null,
+          "revision": "17ff76f1e0427a67e221c0a20b96324d256c340f",
+          "version": "0.8.0"
+        }
+      },
+      {
         "package": "ReactiveSwift",
         "repositoryURL": "https://github.com/ReactiveCocoa/ReactiveSwift.git",
         "state": {
@@ -11,12 +20,30 @@
         }
       },
       {
+        "package": "RxSwift",
+        "repositoryURL": "https://github.com/ReactiveX/RxSwift.git",
+        "state": {
+          "branch": null,
+          "revision": "cec68169a048a079f461ba203fe85636548d7a89",
+          "version": "5.1.3"
+        }
+      },
+      {
         "package": "Slowbox",
-        "repositoryURL": "https://github.com/bendiksolheim/Slowbox",
+        "repositoryURL": "https://github.com/bendiksolheim/Slowbox.git",
         "state": {
           "branch": null,
           "revision": "a3dcafd3867253eb8f4ad24fafc50a97bd901fdb",
           "version": "0.1.0"
+        }
+      },
+      {
+        "package": "SwiftCheck",
+        "repositoryURL": "https://github.com/bow-swift/SwiftCheck.git",
+        "state": {
+          "branch": null,
+          "revision": "748359f9a95edf94d0c4664102f104f56b1ff1fb",
+          "version": "0.12.1"
         }
       }
     ]

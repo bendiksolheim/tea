@@ -1,4 +1,3 @@
-
 public struct Rectangle: Equatable, CustomStringConvertible {
     let x: Int
     let y: Int
@@ -26,7 +25,7 @@ public struct Rectangle: Equatable, CustomStringConvertible {
     }
     
     public func contains(y: Int) -> Bool {
-        return self.y >= y && y < (self.y + self.height)
+        return self.y <= y && y < (self.y + self.height)
     }
     
     public var description: String {

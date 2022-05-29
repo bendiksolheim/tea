@@ -7,22 +7,22 @@ public struct Container: Node {
     public let style: FlexStyle
     public let rect: Rectangle
     
-    public init(_ style: FlexStyle, _ children: [Node]) {
-        self.style = style
-        self.content = children
-        self.rect = Rectangle.empty()
+    public init(_ aStyle: FlexStyle, _ children: [Node]) {
+        style = aStyle
+        content = children
+        rect = Rectangle.empty()
     }
     
     public init(_ children: [Node]) {
-        self.style = FlexStyle()
-        self.content = children
-        self.rect = Rectangle.empty()
+        style = FlexStyle()
+        content = children
+        rect = Rectangle.empty()
     }
     
-    private init(_ children: [Node], _ style: FlexStyle, _ rect: Rectangle) {
-        self.style = style
-        self.content = children
-        self.rect = rect
+    private init(_ children: [Node], _ aStyle: FlexStyle, _ aRect: Rectangle) {
+        style = aStyle
+        content = children
+        rect = aRect
     }
     
     public func measureMainSize() -> Node {
@@ -57,16 +57,16 @@ public struct Container: Node {
     }
     
     func constrainRowTo(_ width: Int, _ height: Int) -> Node {
-        if self.rect.width < width {
+        if rect.width < width {
             // view too small
-            let remaining = width - self.rect.width
+            let remaining = width - rect.width
             let grows = content.map { $0.style.grow }
             let totalGrow = grows.reduce(0) { $0 + $1 }
             let oneGrow = totalGrow == 0 ? 0 : (Float(remaining) / Float(totalGrow))
             let children = content.map { $0.withWidth($0.rect.width + Int(round(Float($0.style.grow) * oneGrow)))}
             let newWidth = children.map { $0.rect.width }.reduce(0, +)
             return self.withChildren(children).withWidth(newWidth)
-        } else if self.rect.width > width {
+        } else if rect.width > width {
             // view too large
             let scaledShrinkFactors = content.map { $0.style.shrink * Float($0.rect.width) }
             let totalScaledShrinkFactor = scaledShrinkFactors.reduce(0.0) { $0 + $1 }
@@ -79,16 +79,16 @@ public struct Container: Node {
     }
     
     func constrainColumnTo(_ width: Int, _ height: Int) -> Node {
-        if self.rect.height < height {
+        if rect.height < height {
             // view too small
-            let remaining = height - self.rect.height
+            let remaining = height - rect.height
             let grows = content.map { $0.style.grow }
             let totalGrow = grows.reduce(0) { $0 + $1 }
             let oneGrow = totalGrow == 0 ? 0 :  Float(remaining) / Float(totalGrow)
             let children = content.map { $0.withHeight($0.rect.height + Int(round(Float($0.style.grow) * oneGrow)))}
             let newHeight = children.map { $0.rect.height }.reduce(0, +)
             return self.withChildren(children).withHeight(newHeight)
-        } else if self.rect.height > height {
+        } else if rect.height > height {
             // view too large
             let scaledShrinkFactors = content.map { $0.style.shrink * Float($0.rect.height) }
             let totalScaledShrinkFactor = scaledShrinkFactors.reduce(0.0) { $0 + $1 }
@@ -121,7 +121,7 @@ public struct Container: Node {
     }
     
     func placeAtColumn(x: Int, y: Int) -> Node {
-        var nextY = 0
+        var nextY = y
         let placedChildren: [Node] = content.map {
 //            let placedChild = $0.withX(x).withY(nextY)
             let placedChild = $0.placeAt(x: x, y: nextY)
@@ -133,35 +133,35 @@ public struct Container: Node {
     }
     
     public func withWidth(_ width: Int) -> Node {
-        return Container(self.content, self.style, rect.withWidth(width))
+        Container(content, style, rect.withWidth(width))
     }
     
     public func withHeight(_ height: Int) -> Node {
-        return Container(self.content, self.style, rect.withHeight(height))
+        Container(content, style, rect.withHeight(height))
     }
     
     public func withX(_ x: Int) -> Node {
-        return Container(self.content, self.style, rect.withX(x))
+        Container(content, style, rect.withX(x))
     }
     
     public func withY(_ y: Int) -> Node {
-        return Container(self.content, self.style, rect.withY(y))
+        Container(content, style, rect.withY(y))
     }
     
     public func withChildren(_ children: [Node]) -> Node {
-        return Container(children, self.style, self.rect)
+        Container(children, style, rect)
     }
     
     public func mainSize(for direction: FlexDirection) -> Int {
-        return content.reduce(0) { $0 + $1.mainSize(for: direction) }
+        content.reduce(0) { $0 + $1.mainSize(for: direction) }
     }
     
     public func crossSize(for direction: FlexDirection) -> Int {
-        return content.reduce(0) { $0 + $1.crossSize(for: direction) }
+        content.reduce(0) { $0 + $1.crossSize(for: direction) }
     }
     
     public func children() -> [Node]? {
-        return content
+        content
     }
     
     public func renderTo(terminal: Slowbox) {

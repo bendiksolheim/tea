@@ -4,27 +4,36 @@ enum Command<Msg> {
     case None
     case Command(Msg)
     case Commands([Cmd<Msg>])
-    case Task(() -> Msg)
-    case AsyncTask(TimeInterval, () -> Msg)
-    case Process(() -> Msg)
-    case Quit
+    case Task(TimeInterval, () -> Msg)
+//    case Task(() -> Msg)
+//    case Process(() -> Msg)
+    case Quit(QuitResult)
     case Terminal(TerminalCommand)
     case Debug
 }
 
+public enum QuitResult {
+    case Success(String?)
+    case Failure
+}
+
+public enum Unit {
+    case Absolute(Int)
+    case Percentage(Int)
+}
+
 enum TerminalCommand {
     case MoveCursor(Int, Int)
+    case PutCursor(Int, Int)
+    case Scroll(Unit)
 }
 
 public struct Cmd<Msg> {
     let cmd: Command<Msg>
 
-    init(_ cmd: Msg) {
-        self.cmd = .Command(cmd)
-    }
-
     init(_ cmd: @escaping () -> Msg) {
-        self.cmd = .Task(cmd)
+//        self.cmd = .Task(0.0, cmd)
+        self.cmd = .Task(0.0, cmd)
     }
 
     init(_ type: Command<Msg>) {
@@ -32,7 +41,7 @@ public struct Cmd<Msg> {
     }
 
     public static func message(_ msg: Msg) -> Cmd<Msg> {
-        Cmd(msg)
+        Cmd(.Command(msg))
     }
 
     public static func none() -> Cmd<Msg> {
@@ -44,6 +53,6 @@ public struct Cmd<Msg> {
     }
 
     public static func batch(_ cmds: Cmd<Msg>...) -> Cmd<Msg> {
-        Cmd(.Commands(cmds.map { $0 }))
+        Cmd(.Commands(cmds))
     }
 }

@@ -13,12 +13,13 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/ReactiveCocoa/ReactiveSwift.git", from: "6.1.0"),
+        .package(url: "https://github.com/bow-swift/bow.git", from: "0.8.0"),
         .package(url: "https://github.com/bendiksolheim/Slowbox", from: "0.1.0")
     ],
     targets: [
         .target(
             name: "Tea",
-            dependencies: ["ReactiveSwift", "Slowbox"]),
+            dependencies: ["ReactiveSwift", "Slowbox", .product(name: "BowEffects", package: "bow")]),
         .testTarget(
             name: "TeaTests",
             dependencies: ["Tea"]),
