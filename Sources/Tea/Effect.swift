@@ -19,7 +19,6 @@ public struct Effect<R> {
     public func perform<Msg>(_ failure: @escaping (Error) -> Msg, _ success: @escaping (R) -> Msg) -> Cmd<Msg> {
         Cmd(.Task(delay) {
             task.unsafeRunSyncEither(on: taskQueue).fold(failure, success)
-//            return toMessage(result)
         })
     }
 
@@ -28,12 +27,6 @@ public struct Effect<R> {
             mapper(task.unsafeRunSyncEither(on: taskQueue))
         })
     }
-
-//    public func perform() -> Cmd<R> {
-//        perform {
-//            $0
-//        }
-//    }
     public func andThen<R2>(_ fn: @escaping (R) -> R2) -> Effect<R2> {
         Effect<R2>(task.map { fn($0) }^)
     }
@@ -44,8 +37,4 @@ public struct Effect<R> {
                 }
                 .sequence()^)
     }
-//            let a: [IO<Error, R>] = tasks.map { $0.task() }
-//            tasks.map {
-//                $0.task()
-//            }
 }

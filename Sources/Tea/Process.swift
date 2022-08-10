@@ -22,7 +22,7 @@ public class Tea {
         return Effect<Void>(IO.invoke({}), cappedInterval)
     }
 
-//    public static func spawn<R>(_ process: @escaping () -> R) -> Task<R> {
-//        Task(process, .External)
-//    }
+    public static func debug(_ message: String, _ file: String = #file) {
+        debug_log(message, file)
+    }
 }

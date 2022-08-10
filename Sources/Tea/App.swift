@@ -3,6 +3,7 @@ import Foundation
 import os.log
 import ReactiveSwift
 import Slowbox
+import Swifter
 
 let termQueue = DispatchQueue(label: "term.queue", qos: .background)
 let taskQueue = DispatchQueue(label: "task.queue", qos: .userInitiated)
@@ -14,14 +15,19 @@ public enum Sub<Message> {
     case None
 }
 
-public struct App<Model: Equatable, Message, Meta> {
+enum AppEvent<Message> {
+    case App(Message)
+    case Terminal(TerminalCommand)
+}
+
+public struct App<Model: Equatable & Encodable, Message> {
     public let initialize: () -> (Model, Cmd<Message>)
-    public let render: (Model, Size) -> ViewModel<Message, Meta>
+    public let render: (Model) -> Node
     public let update: (Message, Model) -> (Model, Cmd<Message>)
     public let subscriptions: [Sub<Message>]
 
     public init(initialize: @escaping () -> (Model, Cmd<Message>),
-                render: @escaping (Model, Size) -> ViewModel<Message, Meta>,
+                render: @escaping (Model) -> Node,
                 update: @escaping (Message, Model) -> (Model, Cmd<Message>),
                 subscriptions: [Sub<Message>]) {
         self.initialize = initialize
@@ -36,8 +42,8 @@ public struct TerminalInfo {
     public let size: Size
 }
 
-public func application<Model: Equatable, Message, Meta>(
-        _ app: App<Model, Message, Meta>
+public func application<Model: Equatable & Encodable, Message>(
+        _ app: App<Model, Message>
 ) -> QuitResult {
     let runLoop = CFRunLoopGetCurrent()
     let terminal = Slowbox(io: TTY(), screen: .Alternate)
@@ -46,25 +52,52 @@ public func application<Model: Equatable, Message, Meta>(
     let (initialModel, initialCommand) = app.initialize()
     var model = initialModel
     var view = measure("Initial render") {
-        app.render(model, terminal.terminalSize()).layout(terminal)
+        Layout.calculateLayout(app.render(model), maxWidth: terminal.terminalSize().width, maxHeight: terminal.terminalSize().height)
     }
     render(view, terminal)
+
+    let debugServer = HttpServer()
+    debugServer["/"] = { req in .ok(.html(viewRepresentation(view, terminal))) }
+    debugServer["/model"] = { req in .ok(.html(modelRepresentation(model))) }
+    debugServer["/log"] = { req in .ok(.html(logRepresentation())) }
+    try! debugServer.start(8090)
 
     let keyboardSubscription = getKeyboardSubscription(subscriptions: app.subscriptions)
     let terminalSizeSubscription = getTerminalResizeSubscription(subscriptions: app.subscriptions)
     let cursorSubscription = getCursorSubscription(subscriptions: app.subscriptions)
 
-    let (messageOutput, messageInput) = Signal<Message, Never>.pipe()
+    let (messageOutput, messageInput) = Signal<AppEvent<Message>, Never>.pipe()
 
-    messageOutput.observeValues { message in
-        let (updatedModel, command) = app.update(message, model)
-        let modelChanged = !(updatedModel == model)
-        model = updatedModel
-        process(command: command, messageInput, terminal)
+    messageOutput.observeValues { ev in
+        switch ev {
+        case let .App(message):
+            let (updatedModel, command) = app.update(message, model)
+            let modelChanged = !(updatedModel == model)
+            model = updatedModel
+            process(command: command, messageInput, terminal, view)
 
-        if modelChanged {
-            view = measure("Msg render") {
-                app.render(model, terminal.terminalSize()).layout(terminal)
+            if modelChanged {
+                view = measure("Msg render") {
+                    Layout.calculateLayout(app.render(model), maxWidth: terminal.terminalSize().width, maxHeight: terminal.terminalSize().height)
+                }
+                async {
+                    render(view, terminal)
+                }
+            }
+        case let .Terminal(terminalCommand):
+            debug_log("Terminal command: \(terminalCommand)")
+            view = view.modifyFocused { focused in
+                debug_log("Modifying focused")
+                switch terminalCommand {
+                case let .MoveCursor(_, yDelta):
+                    return move(yDelta, focused, terminal)
+                case let .PutCursor(x, y):
+                    terminal.moveCursor(x, y)
+                    return focused
+
+                case let .Scroll(amount):
+                    return focused // TODO: implement me
+                }
             }
             async {
                 render(view, terminal)
@@ -86,56 +119,57 @@ public func application<Model: Equatable, Message, Meta>(
     }
 
     let eventHandler = { (event: Event) in
-        os_log("%{public}@", "New event: \(event)")
+        debug_log("New event: \(event)")
         switch event {
         case let .Key(key):
-            if let node = view.view.contentAt(y: terminal.cursor.y) {
+            if let node = view.contentAt(y: terminal.cursor.y) {
                 // Send key event to node under cursor
                 var swallowed = false
-                if let content = node as? Content<Message> {
-                    content.events.forEach { evChar, message in
-                        if evChar == key {
-                            swallowed = true
-                            async {
-                                messageInput.send(value: message)
+                    if let content = node as? Text<Message> {
+                        content.events.forEach { evChar, message in
+                            if evChar == key {
+                                swallowed = true
+                                async {
+                                    messageInput.send(value: .App(message))
+                                }
                             }
                         }
                     }
-                }
-                if !swallowed {
+                    if !swallowed {
+                        if let msg = keyboardSubscription?(key) {
+                            async {
+                                messageInput.send(value: .App(msg))
+                            }
+                        }
+                    }
+                } else {
                     if let msg = keyboardSubscription?(key) {
                         async {
-                            messageInput.send(value: msg)
+                            messageInput.send(value: .App(msg))
                         }
                     }
                 }
-            } else {
-                if let msg = keyboardSubscription?(key) {
-                    async {
-                        messageInput.send(value: msg)
-                    }
-                }
-            }
+//            }
         case let .Resize(size):
             view = measure("Resize render") {
-                app.render(model, terminal.terminalSize()).layout(terminal)
+                Layout.calculateLayout(app.render(model), maxWidth: terminal.terminalSize().width, maxHeight: terminal.terminalSize().height)
             }
             async {
                 render(view, terminal)
                 if let msg = terminalSizeSubscription?(size) {
-                    messageInput.send(value: msg)
+                    messageInput.send(value: .App(msg))
                 }
             }
         }
     }
 
     let completedHandler = {
-        os_log("Quitting")
+        debug_log("Quitting")
         CFRunLoopStop(runLoop)
-        os_log("After CFRunLoopStop")
+        debug_log("After CFRunLoopStop")
     }
 
-    process(command: initialCommand, messageInput, terminal)
+    process(command: initialCommand, messageInput, terminal, view)
 
     let eventConsumer = Signal<Event, Never>.Observer(value: eventHandler, completed: completedHandler)
 
@@ -154,8 +188,8 @@ public func application<Model: Equatable, Message, Meta>(
     return exitMessage
 }
 
-func render<Message, Data>(_ view: ViewModel<Message, Data>, _ terminal: Slowbox) {
-    view.view.renderTo(terminal: terminal)
+func render(_ view: Node, _ terminal: Slowbox) {
+    view.renderTo(terminal: terminal)
     terminal.present()
     terminal.clearBuffer()
 }
@@ -205,26 +239,26 @@ func async(_ fn: @escaping () -> Void) {
     }
 }
 
-func process<Msg>(command: Cmd<Msg>, _ messageProducer: Signal<Msg, Never>.Observer, _ terminal: Slowbox) {
-    os_log("%{public}@", "Processing command: \(command)")
+func process<Msg>(command: Cmd<Msg>, _ messageProducer: Signal<AppEvent<Msg>, Never>.Observer, _ terminal: Slowbox, _ view: Node) {
+    debug_log("Processing command: \(command)")
     switch command.cmd {
     case .None:
         break
 
     case let .Command(message):
         async {
-            messageProducer.send(value: message)
+            messageProducer.send(value: .App(message))
         }
 
     case let .Commands(commands):
         for command in commands {
-            process(command: command, messageProducer, terminal)
+            process(command: command, messageProducer, terminal, view)
         }
 
     case let .Task(delay, task):
         taskQueue.asyncAfter(deadline: .now() + delay) {
             let value = task()
-            messageProducer.send(value: value)
+            messageProducer.send(value: .App(value))
         }
 
     case .Quit:
@@ -233,19 +267,65 @@ func process<Msg>(command: Cmd<Msg>, _ messageProducer: Signal<Msg, Never>.Obser
         messageProducer.sendCompleted()
 
     case let .Terminal(terminalCommand):
-        switch terminalCommand {
-        case let .MoveCursor(xDelta, yDelta):
-            let currentCursor = terminal.cursor
-            terminal.moveCursor(currentCursor.x + xDelta, currentCursor.y + yDelta)
-        case let .PutCursor(x, y):
-            terminal.moveCursor(x, y)
-
-        case let .Scroll(amount):
-            break // TODO: implement me
+        async {
+            messageProducer.send(value: .Terminal(terminalCommand))
         }
-
-    case .Debug:
-        break
-//        renderDebug(viewModel, terminal)
+//        let focused = view.getFocused() ?? view as! Container // TODO: this will crash if top level view is of type Content
     }
 }
+
+func move(_ steps: Int/*, _ viewHeight: Int, _ current: Int, _ terminalHeight: Int*/, _ view: Node, _ terminal: Slowbox) -> Node {
+    debug_log("MOVE")
+    let current = terminal.cursor.y
+    if steps < 0 {
+        // scrolling up
+        if current <= view.rect.y {
+            // already at top of view, scroll view instead
+            let newScroll = max(view.scroll + steps, 0)
+            return view.scroll(amount: newScroll)
+        } else {
+            // move cursor up
+            let cappedSteps = current + steps < 0 ? 0 - current : steps
+            terminal.moveCursor(0, terminal.cursor.y + cappedSteps)
+            return view
+        }
+    } else {
+        // scrolling down
+        debug_log("HMM: \(current), \(view.rect.height - 1)")
+        if current >= view.rect.height - 1 {
+            debug_log("LETS SCROLL")
+            let newScroll = min(view.scroll + steps, view.actualSize().height - view.rect.height)
+            return view.scroll(amount: newScroll)
+        } else {
+            debug_log("LETS MOVE")
+            let cappedSteps = current + steps > view.actualSize().height ? (view.actualSize().height - current - 1) : min(steps, view.actualSize().height - current - 1)
+            terminal.moveCursor(0, terminal.cursor.y + cappedSteps)
+            return view
+        }
+    }
+}
+
+//func scroll(_ model: Model, _ steps: Int, _ viewHeight: Int, _ current: Int, _ terminalHeight: Int, _ view: View) -> (Model, Cmd<Message>) {
+//    let scroll = view.viewModel.scroll
+//    if steps < 0 {
+//        // scrolling up
+//        let newScroll = max(scroll + steps, 0)
+//        if newScroll != scroll + steps {
+//            // We have reached the top, start moving cursor instead
+//            let (movedModel, movedCmd) = move(model, scroll + steps - newScroll, viewHeight, current, terminalHeight, view)
+//            return (movedModel.replace(buffer: view.with(viewModel: UIModel(scroll: newScroll))), movedCmd)
+//        } else {
+//            return (model.replace(buffer: view.with(viewModel: UIModel(scroll: newScroll))), Cmd.none())
+//        }
+//    } else {
+//        // scrolling down
+//        let newScroll = min(scroll + steps, max(viewHeight - terminalHeight, 0))
+//        if newScroll != scroll + steps {
+//            // We have reached the bottom, start moving cursor instead
+//            let (movedModel, movedCmd) = move(model, scroll + steps - newScroll, viewHeight, current, terminalHeight, view)
+//            return (movedModel.replace(buffer: view.with(viewModel: UIModel(scroll: newScroll))), movedCmd)
+//        } else {
+//            return (model.replace(buffer: view.with(viewModel: UIModel(scroll: newScroll))), Cmd.none())
+//        }
+//    }
+//}

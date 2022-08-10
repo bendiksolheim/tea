@@ -6,7 +6,7 @@ public protocol TextType: CustomStringConvertible {
     func count() -> Int
 }
 
-public struct Text: TextType {
+public struct FormattedText: TextType {
     public let content: [(Formatting, Character)]
     
     public init(_ content: String, _ foreground: Color = .Default, _ background: Color = .Default) {
@@ -18,21 +18,23 @@ public struct Text: TextType {
     }
     
     public func terminalContent() -> [(Formatting, Character)] {
-        return content
+        content
     }
     
     public func count() -> Int {
-        return content.count
+        content.count
     }
     
     public var description: String {
-        return String(content.map { $0.1 })
+        String(content.map {
+            $0.1
+        })
     }
 }
 
 extension String: TextType {
     public func count() -> Int {
-        return self.count
+        count
     }
     
     public var content: [(Formatting, Character)] {
@@ -40,18 +42,20 @@ extension String: TextType {
     }
     
     public func terminalContent() -> [(Formatting, Character)] {
-        return Array(self).map { (Formatting(.Default, .Default), $0)}
+        Array(self).map {
+            (Formatting(.Default, .Default), $0)
+        }
     }
 }
 
-public func + (lhs: Text, rhs: String) -> Text {
-    return Text(lhs.content + rhs.content)
+public func + (lhs: FormattedText, rhs: String) -> FormattedText {
+    FormattedText(lhs.content + rhs.content)
 }
 
-public func + (lhs: String, rhs: Text) -> Text {
-    return Text(lhs.content + rhs.content)
+public func + (lhs: String, rhs: FormattedText) -> FormattedText {
+    FormattedText(lhs.content + rhs.content)
 }
 
-public func + (lhs: Text, rhs: Text) -> Text {
-    return Text(lhs.content + rhs.content)
+public func + (lhs: FormattedText, rhs: FormattedText) -> FormattedText {
+    FormattedText(lhs.content + rhs.content)
 }

@@ -9,7 +9,6 @@ enum Command<Msg> {
 //    case Process(() -> Msg)
     case Quit(QuitResult)
     case Terminal(TerminalCommand)
-    case Debug
 }
 
 public enum QuitResult {
@@ -32,7 +31,6 @@ public struct Cmd<Msg> {
     let cmd: Command<Msg>
 
     init(_ cmd: @escaping () -> Msg) {
-//        self.cmd = .Task(0.0, cmd)
         self.cmd = .Task(0.0, cmd)
     }
 
@@ -46,10 +44,6 @@ public struct Cmd<Msg> {
 
     public static func none() -> Cmd<Msg> {
         Cmd(.None)
-    }
-
-    public static func debug() -> Cmd<Msg> {
-        Cmd(.Debug)
     }
 
     public static func batch(_ cmds: Cmd<Msg>...) -> Cmd<Msg> {
