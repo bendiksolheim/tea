@@ -8,7 +8,7 @@ enum Command<Msg> {
 //    case Task(() -> Msg)
 //    case Process(() -> Msg)
     case Quit(QuitResult)
-    case Terminal(TerminalCommand)
+    case Terminal(CursorCommand)
 }
 
 public enum QuitResult {
@@ -21,7 +21,7 @@ public enum Unit {
     case Percentage(Int)
 }
 
-enum TerminalCommand {
+public enum CursorCommand {
     case MoveCursor(Int, Int)
     case PutCursor(Int, Int)
     case Scroll(Unit)

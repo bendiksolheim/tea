@@ -4,25 +4,22 @@ import Slowbox
 public struct Vertical: Node {
     public let children: [Node]
     public let rect: Rectangle
-    public let scroll: Int
-    public let focus: Bool
+    let cursor: Cursor?
     public let width: ViewSize
     public let height: ViewSize
 
-    public init(_ width: ViewSize = .Auto, _ height: ViewSize = .Auto, _ focus: Bool = false, @NodeBuilder body: () -> [Node]) {
+    public init(_ width: ViewSize = .Auto, _ height: ViewSize = .Auto, _ cursor: Cursor? = nil, @NodeBuilder body: () -> [Node]) {
         children = body()
         rect = Rectangle.empty()
-        scroll = 0
-        self.focus = focus
+        self.cursor = cursor
         self.width = width
         self.height = height
     }
 
-    private init(_ children: [Node], _ rect: Rectangle, _ scroll: Int, _ focus: Bool, _ width: ViewSize, _ height: ViewSize) {
+    private init(_ children: [Node], _ rect: Rectangle, _ cursor: Cursor?, _ width: ViewSize, _ height: ViewSize) {
         self.children = children
         self.rect = rect
-        self.scroll = scroll
-        self.focus = focus
+        self.cursor = cursor
         self.width = width
         self.height = height
     }
@@ -41,7 +38,7 @@ public struct Vertical: Node {
         } else {
             measuredHeight = measuredChildren.map { $0.rect.height }.reduce(0, +)
         }
-        return Self(measuredChildren, Rectangle(x: 0, y: 0, width: measuredWidth, height: measuredHeight), scroll, focus, width, height)
+        return Self(measuredChildren, Rectangle(x: 0, y: 0, width: measuredWidth, height: measuredHeight), cursor, width, height)
     }
 
     public func adjustTo(maxWidth: Int, maxHeight: Int) -> Node {
@@ -66,7 +63,7 @@ public struct Vertical: Node {
             return $0.element.adjustTo(maxWidth: rect.width, maxHeight: rect.height)
         }
 
-        return Self(adjustedChildren, adjustedRect, scroll, focus, width, height)
+        return Self(adjustedChildren, adjustedRect, cursor, width, height)
     }
 
     public func placeAt(x: Int, y: Int) -> Node {
@@ -77,7 +74,7 @@ public struct Vertical: Node {
             return placedChild
         }
 
-        return Self(placedChildren, rect.with(x: x, y: y), scroll, focus, width, height)
+        return Self(placedChildren, rect.with(x: x, y: y), cursor, width, height)
     }
 
     public func contentAt(y: Int) -> Node? {
@@ -88,31 +85,64 @@ public struct Vertical: Node {
         }
     }
 
+    public func viewFocused() -> Node? {
+        if let cursor = cursor {
+            if let node = children.first(where: { $0.rect.contains(y: cursor.y) }) {
+                return node.contentAt(y: cursor.y)
+            } else {
+                return nil
+            }
+        } else {
+            let focusedView = children.first(where: { $0.viewFocused() != nil })
+            return focusedView?.viewFocused() ?? nil
+        }
+    }
+
     public func actualSize() -> Size {
         let width = children.map { $0.rect.width }.max() ?? 0
         let height = children.map { $0.rect.height }.foldLeft(0, +)
         return Size(width: width, height: height)
     }
 
-    public func scroll(amount: Int) -> Node {
-        Self(children, rect, amount, focus, width, height)
+    public func hasCursor() -> Bool {
+        cursor != nil
     }
 
-    public func modifyFocused(fn: (Node) -> Node) -> Node {
-        let modifiedChildren: [Node] = children.map { child in
-            if child.focus {
-                return fn(child)
-            } else {
-                return child.modifyFocused(fn: fn)
+    public func modifyCursor(cursorCommand: CursorCommand) -> Cursor? {
+        if let cursor = cursor {
+            switch cursorCommand {
+            case let .MoveCursor(_, yDelta):
+                return move(yDelta, self, cursor)
+            case let .PutCursor(x, y):
+//            terminal.moveCursor(x, y)
+//                return CursorModel(y: y)
+                return cursor.with(y: y)
+
+            case let .Scroll(amount):
+                return cursor
+                    //return focused // TODO: implement me
             }
         }
-        return Self(modifiedChildren, rect, scroll, focus, width, height)
+
+        return children.first { $0.hasCursor() }.map { $0.modifyCursor(cursorCommand: cursorCommand)! }
     }
 
     public func renderTo(terminal: Slowbox) {
         children.enumerated().forEach { element in
             if element.offset < rect.height {
                 element.element.renderTo(terminal: terminal)
+            }
+        }
+
+        if let cursor = cursor {
+            terminal.modify(x: 0, y: cursor.y) { cell in
+                cell.with(foreground: Color.Black, background: Color.Blue)
+            }
+
+            (1..<rect.width).forEach { x in
+                terminal.modify(x: x, y: cursor.y) { cell in
+                    cell.with(background: Color.DarkGray)
+                }
             }
         }
     }

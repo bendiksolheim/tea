@@ -17,7 +17,7 @@ public enum Sub<Message> {
 
 enum AppEvent<Message> {
     case App(Message)
-    case Terminal(TerminalCommand)
+    case Cursor(CursorCommand)
 }
 
 public struct App<Model: Equatable & Encodable, Message> {
@@ -84,24 +84,31 @@ public func application<Model: Equatable & Encodable, Message>(
                     render(view, terminal)
                 }
             }
-        case let .Terminal(terminalCommand):
-            debug_log("Terminal command: \(terminalCommand)")
-            view = view.modifyFocused { focused in
-                debug_log("Modifying focused")
-                switch terminalCommand {
-                case let .MoveCursor(_, yDelta):
-                    return move(yDelta, focused, terminal)
-                case let .PutCursor(x, y):
-                    terminal.moveCursor(x, y)
-                    return focused
-
-                case let .Scroll(amount):
-                    return focused // TODO: implement me
+        case let .Cursor(cursorCommand):
+            debug_log("Cursor command: \(cursorCommand)")
+            let newModel = view.modifyCursor(cursorCommand: cursorCommand)
+            if let cursorSubscription = cursorSubscription, let newModel = newModel {
+                let message = cursorSubscription(newModel)
+                async {
+                    messageInput.send(value: .App(message))
                 }
             }
-            async {
-                render(view, terminal)
-            }
+//            view = view.modifyCursor { focused in
+//                debug_log("Modifying focused")
+//                switch cursorCommand {
+//                case let .MoveCursor(_, yDelta):
+//                    return move(yDelta, focused, terminal)
+//                case let .PutCursor(x, y):
+//                    terminal.moveCursor(x, y)
+//                    return focused
+//
+//                case let .Scroll(amount):
+//                    return focused // TODO: implement me
+//                }
+//            }
+//            async {
+//                render(view, terminal)
+//            }
         }
     }
 
@@ -122,7 +129,7 @@ public func application<Model: Equatable & Encodable, Message>(
         debug_log("New event: \(event)")
         switch event {
         case let .Key(key):
-            if let node = view.contentAt(y: terminal.cursor.y) {
+            if let node = view.viewFocused() {
                 // Send key event to node under cursor
                 var swallowed = false
                     if let content = node as? Text<Message> {
@@ -149,7 +156,6 @@ public func application<Model: Equatable & Encodable, Message>(
                         }
                     }
                 }
-//            }
         case let .Resize(size):
             view = measure("Resize render") {
                 Layout.calculateLayout(app.render(model), maxWidth: terminal.terminalSize().width, maxHeight: terminal.terminalSize().height)
@@ -268,40 +274,9 @@ func process<Msg>(command: Cmd<Msg>, _ messageProducer: Signal<AppEvent<Msg>, Ne
 
     case let .Terminal(terminalCommand):
         async {
-            messageProducer.send(value: .Terminal(terminalCommand))
+            messageProducer.send(value: .Cursor(terminalCommand))
         }
 //        let focused = view.getFocused() ?? view as! Container // TODO: this will crash if top level view is of type Content
-    }
-}
-
-func move(_ steps: Int/*, _ viewHeight: Int, _ current: Int, _ terminalHeight: Int*/, _ view: Node, _ terminal: Slowbox) -> Node {
-    debug_log("MOVE")
-    let current = terminal.cursor.y
-    if steps < 0 {
-        // scrolling up
-        if current <= view.rect.y {
-            // already at top of view, scroll view instead
-            let newScroll = max(view.scroll + steps, 0)
-            return view.scroll(amount: newScroll)
-        } else {
-            // move cursor up
-            let cappedSteps = current + steps < 0 ? 0 - current : steps
-            terminal.moveCursor(0, terminal.cursor.y + cappedSteps)
-            return view
-        }
-    } else {
-        // scrolling down
-        debug_log("HMM: \(current), \(view.rect.height - 1)")
-        if current >= view.rect.height - 1 {
-            debug_log("LETS SCROLL")
-            let newScroll = min(view.scroll + steps, view.actualSize().height - view.rect.height)
-            return view.scroll(amount: newScroll)
-        } else {
-            debug_log("LETS MOVE")
-            let cappedSteps = current + steps > view.actualSize().height ? (view.actualSize().height - current - 1) : min(steps, view.actualSize().height - current - 1)
-            terminal.moveCursor(0, terminal.cursor.y + cappedSteps)
-            return view
-        }
     }
 }
 

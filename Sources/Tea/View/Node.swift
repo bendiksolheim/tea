@@ -3,8 +3,6 @@ import Slowbox
 
 public protocol Node: TerminalHtmlRepresentation {
     var rect: Rectangle { get }
-    var scroll: Int { get }
-    var focus: Bool { get }
     var children: [Node] { get }
     var width: ViewSize { get }
     var height: ViewSize { get }
@@ -12,9 +10,10 @@ public protocol Node: TerminalHtmlRepresentation {
     func adjustTo(maxWidth: Int, maxHeight: Int) -> Node
     func placeAt(x: Int, y: Int) -> Node
     func contentAt(y: Int) -> Node?
+    func viewFocused() -> Node?
     func actualSize() -> Size
-    func scroll(amount: Int) -> Node
-    func modifyFocused(fn: (Node) -> Node) -> Node
+    func hasCursor() -> Bool
+    func modifyCursor(cursorCommand: CursorCommand) -> Cursor?
     func renderTo(terminal: Slowbox)
 }
 

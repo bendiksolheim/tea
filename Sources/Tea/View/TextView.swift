@@ -70,16 +70,24 @@ public struct Text<Message>: Node {
         }
     }
 
+    public func viewFocused() -> Node? {
+        nil
+    }
+
     public func actualSize() -> Size {
         Size(width: text.count(), height: 1)
     }
 
-    public func scroll(amount: Int) -> Node {
-        self
+//    public func scroll(amount: Int) -> Node {
+//        self
+//    }
+
+    public func modifyCursor(cursorCommand: CursorCommand) ->  Cursor? {
+        nil
     }
 
-    public func modifyFocused(fn: (Node) -> Node) -> Node {
-        self
+    public func hasCursor() -> Bool {
+        false
     }
 
     public func renderTo(terminal: Slowbox) {
