@@ -57,9 +57,15 @@ public func application<Model: Equatable & Encodable, Message>(
     render(view, terminal)
 
     let debugServer = HttpServer()
-    debugServer["/"] = { req in .ok(.html(viewRepresentation(view, terminal))) }
-    debugServer["/model"] = { req in .ok(.html(modelRepresentation(model))) }
-    debugServer["/log"] = { req in .ok(.html(logRepresentation())) }
+    debugServer["/"] = { req in
+        .ok(.html(viewRepresentation(view, terminal)))
+    }
+    debugServer["/model"] = { req in
+        .ok(.html(modelRepresentation(model)))
+    }
+    debugServer["/log"] = { req in
+        .ok(.html(logRepresentation()))
+    }
     try! debugServer.start(8090)
 
     let keyboardSubscription = getKeyboardSubscription(subscriptions: app.subscriptions)
@@ -69,12 +75,14 @@ public func application<Model: Equatable & Encodable, Message>(
     let (messageOutput, messageInput) = Signal<AppEvent<Message>, Never>.pipe()
 
     messageOutput.observeValues { ev in
+        debug_log("messageOutput")
         switch ev {
         case let .App(message):
+            debug_log("App message: \(message)")
             let (updatedModel, command) = app.update(message, model)
             let modelChanged = !(updatedModel == model)
             model = updatedModel
-            process(command: command, messageInput, terminal, view)
+            process(command: command, messageInput, terminal, view, &exitMessage)
 
             if modelChanged {
                 view = measure("Msg render") {
@@ -129,33 +137,39 @@ public func application<Model: Equatable & Encodable, Message>(
         debug_log("New event: \(event)")
         switch event {
         case let .Key(key):
+            debug_log("Key event: \(key)")
             if let node = view.viewFocused() {
+                debug_log("App has focused view")
                 // Send key event to node under cursor
                 var swallowed = false
-                    if let content = node as? Text<Message> {
-                        content.events.forEach { evChar, message in
-                            if evChar == key {
-                                swallowed = true
-                                async {
-                                    messageInput.send(value: .App(message))
-                                }
-                            }
-                        }
-                    }
-                    if !swallowed {
-                        if let msg = keyboardSubscription?(key) {
+                if let content = node as? Text<Message> {
+                    content.events.forEach { evChar, message in
+                        if evChar == key {
+                            swallowed = true
                             async {
-                                messageInput.send(value: .App(msg))
+                                debug_log("Key captured by focused view")
+                                messageInput.send(value: .App(message))
                             }
                         }
                     }
-                } else {
+                }
+                if !swallowed {
                     if let msg = keyboardSubscription?(key) {
                         async {
+                            debug_log("Key not captured, sending to app")
                             messageInput.send(value: .App(msg))
                         }
                     }
                 }
+            } else {
+                debug_log("Checking for keyboard subscription")
+                if let msg = keyboardSubscription?(key) {
+                    async {
+                        debug_log("Sending to app")
+                        messageInput.send(value: .App(msg))
+                    }
+                }
+            }
         case let .Resize(size):
             view = measure("Resize render") {
                 Layout.calculateLayout(app.render(model), maxWidth: terminal.terminalSize().width, maxHeight: terminal.terminalSize().height)
@@ -175,7 +189,7 @@ public func application<Model: Equatable & Encodable, Message>(
         debug_log("After CFRunLoopStop")
     }
 
-    process(command: initialCommand, messageInput, terminal, view)
+    process(command: initialCommand, messageInput, terminal, view, &exitMessage)
 
     let eventConsumer = Signal<Event, Never>.Observer(value: eventHandler, completed: completedHandler)
 
@@ -190,6 +204,7 @@ public func application<Model: Equatable & Encodable, Message>(
 
     CFRunLoopRun()
 
+    debugServer.stop()
     terminal.restore()
     return exitMessage
 }
@@ -198,6 +213,47 @@ func render(_ view: Node, _ terminal: Slowbox) {
     view.renderTo(terminal: terminal)
     terminal.present()
     terminal.clearBuffer()
+}
+
+func process<Msg>(command: Cmd<Msg>, _ messageProducer: Signal<AppEvent<Msg>, Never>.Observer, _ terminal: Slowbox, _ view: Node, _ quitResult: inout QuitResult) {
+    debug_log("Processing command: \(command)")
+    switch command.cmd {
+    case .None:
+        break
+
+    case let .Command(message):
+        async {
+            messageProducer.send(value: .App(message))
+        }
+
+    case let .Commands(commands):
+        for command in commands {
+            process(command: command, messageProducer, terminal, view, &quitResult)
+        }
+
+    case let .Task(delay, task):
+        taskQueue.asyncAfter(deadline: .now() + delay) {
+            let value = task()
+            messageProducer.send(value: .App(value))
+        }
+
+    case let .Quit(result):
+        quitResult = result
+        // Exit strategy: first complete the message thread, as that is what we have access to from here. Then, from the
+        // message thread completion callback, complete the polling thread.
+        messageProducer.sendCompleted()
+
+    case let .Terminal(terminalCommand):
+        async {
+            messageProducer.send(value: .Cursor(terminalCommand))
+        }
+    }
+}
+
+func async(_ fn: @escaping () -> Void) {
+    DispatchQueue.main.async(qos: .userInteractive) {
+        fn()
+    }
 }
 
 func getKeyboardSubscription<Message>(subscriptions: [Sub<Message>]) -> ((KeyEvent) -> Message)? {
@@ -237,47 +293,6 @@ func getCursorSubscription<Message>(subscriptions: [Sub<Message>]) -> ((Cursor) 
     }
 
     return nil
-}
-
-func async(_ fn: @escaping () -> Void) {
-    DispatchQueue.main.async(qos: .userInteractive) {
-        fn()
-    }
-}
-
-func process<Msg>(command: Cmd<Msg>, _ messageProducer: Signal<AppEvent<Msg>, Never>.Observer, _ terminal: Slowbox, _ view: Node) {
-    debug_log("Processing command: \(command)")
-    switch command.cmd {
-    case .None:
-        break
-
-    case let .Command(message):
-        async {
-            messageProducer.send(value: .App(message))
-        }
-
-    case let .Commands(commands):
-        for command in commands {
-            process(command: command, messageProducer, terminal, view)
-        }
-
-    case let .Task(delay, task):
-        taskQueue.asyncAfter(deadline: .now() + delay) {
-            let value = task()
-            messageProducer.send(value: .App(value))
-        }
-
-    case .Quit:
-        // Exit strategy: first complete the message thread, as that is what we have access to from here. Then, from the
-        // message thread completion callback, complete the polling thread.
-        messageProducer.sendCompleted()
-
-    case let .Terminal(terminalCommand):
-        async {
-            messageProducer.send(value: .Cursor(terminalCommand))
-        }
-//        let focused = view.getFocused() ?? view as! Container // TODO: this will crash if top level view is of type Content
-    }
 }
 
 //func scroll(_ model: Model, _ steps: Int, _ viewHeight: Int, _ current: Int, _ terminalHeight: Int, _ view: View) -> (Model, Cmd<Message>) {
