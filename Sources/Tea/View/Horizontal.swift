@@ -6,23 +6,26 @@ public struct Horizontal: Node {
     public let rect: Rectangle
     public let width: ViewSize
     public let height: ViewSize
+    public let padding: Padding
 
     private let cursor: Cursor?
 
-    public init(_ width: ViewSize = .Auto, _ height: ViewSize = .Auto, _ cursor: Cursor? = nil, @NodeBuilder body: () -> [Node]) {
+    public init(_ width: ViewSize = .Auto, _ height: ViewSize = .Auto, _ cursor: Cursor? = nil, padding: Padding = Padding(), @NodeBuilder body: () -> [Node]) {
         children = body()
         rect = Rectangle.empty()
         self.width = width
         self.height = height
         self.cursor = cursor
+        self.padding = padding
     }
 
-    private init(_ children: [Node], _ rect: Rectangle/*, _ scroll: Int*/, _ cursor: Cursor?, _ width: ViewSize, _ height: ViewSize) {
+    private init(_ children: [Node], _ rect: Rectangle, _ cursor: Cursor?, _ width: ViewSize, _ height: ViewSize, _ padding: Padding) {
         self.children = children
         self.rect = rect
         self.width = width
         self.height = height
         self.cursor = cursor
+        self.padding = padding
     }
 
     public func measureContent() -> Self {
@@ -31,15 +34,15 @@ public struct Horizontal: Node {
         if case let ViewSize.Exact(exactWidth) = width {
             measuredWidth = exactWidth
         } else {
-            measuredWidth = measuredChildren.map { $0.rect.width }.reduce(0, +)
+            measuredWidth = measuredChildren.map { $0.rect.width }.reduce(0, +) + padding.left + padding.right
         }
         let measuredHeight: Int
         if case let ViewSize.Exact(exactHeight) = height {
             measuredHeight = exactHeight
         } else {
-            measuredHeight = measuredChildren.map { $0.rect.height }.max() ?? 0
+            measuredHeight = (measuredChildren.map { $0.rect.height }.max() ?? 0) + padding.top + padding.bottom
         }
-        return Self(measuredChildren, Rectangle(x: 0, y: 0, width: measuredWidth, height: measuredHeight), cursor, width, height)
+        return Self(measuredChildren, Rectangle(x: 0, y: 0, width: measuredWidth, height: measuredHeight), cursor, width, height, padding)
     }
 
     public func adjustTo(maxWidth: Int, maxHeight: Int) -> Node {
@@ -64,18 +67,19 @@ public struct Horizontal: Node {
             return $0.element.adjustTo(maxWidth: rect.width, maxHeight: rect.height)
         }
 
-        return Self(adjustedChildren, adjustedRect, cursor, width, height)
+        return Self(adjustedChildren, adjustedRect, cursor, width, height, padding)
     }
 
     public func placeAt(x: Int, y: Int) -> Node {
-        var nextX = x
+        var nextX = x + padding.left
+        let top = y + padding.top
         let placedChildren: [Node] = children.map { child in
-            let placedChild = child.placeAt(x: nextX, y: y)
+            let placedChild = child.placeAt(x: nextX, y: top)
             nextX += placedChild.rect.width
             return placedChild
         }
 
-        return Self(placedChildren, rect.with(x: x, y: y), cursor, width, height)
+        return Self(placedChildren, rect.with(x: x, y: y), cursor, width, height, padding)
     }
 
     public func contentAt(y: Int) -> Node? {
@@ -121,7 +125,7 @@ public struct Horizontal: Node {
 
             case let .Scroll(amount):
                 return cursor
-                //return focused // TODO: implement me
+                    //return focused // TODO: implement me
             }
         }
 
@@ -142,7 +146,7 @@ public struct Horizontal: Node {
 
             (1..<rect.width).forEach { x in
                 terminal.modify(x: x, y: cursor.y) { cell in
-                    cell.with(background: Color.LightGray)
+                    cell.with(background: Color.Black)
                 }
             }
         }
