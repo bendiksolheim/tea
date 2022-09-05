@@ -14,7 +14,6 @@ func adjustSize(_ size: ViewSize, _ currentSize: Int, _ maxSize: Int) -> Int {
 }
 
 func move(_ steps: Int, _ view: Node, _ cursor: Cursor) -> Cursor {
-    debug_log("MOVE")
     let current = cursor.y
     if steps < 0 {
         // scrolling up
@@ -31,14 +30,11 @@ func move(_ steps: Int, _ view: Node, _ cursor: Cursor) -> Cursor {
         }
     } else {
         // scrolling down
-        debug_log("HMM: \(current), \(view.rect.height - 1)")
         if current >= view.rect.height - 1 {
-            debug_log("LETS SCROLL")
             let newScroll = min(cursor.scroll + steps, view.actualSize().height - view.rect.height)
 //            return view.scroll(amount: newScroll)
             return cursor.with(scroll: newScroll)
         } else {
-            debug_log("LETS MOVE")
             let cappedSteps = current + steps > view.actualSize().height ? (view.actualSize().height - current - 1) : min(steps, view.actualSize().height - current - 1)
 //            terminal.moveCursor(0, terminal.cursor.y + cappedSteps)
             return cursor.with(y: current + cappedSteps)

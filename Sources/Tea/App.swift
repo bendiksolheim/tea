@@ -75,10 +75,8 @@ public func application<Model: Equatable & Encodable, Message>(
     let (messageOutput, messageInput) = Signal<AppEvent<Message>, Never>.pipe()
 
     messageOutput.observeValues { ev in
-        debug_log("messageOutput")
         switch ev {
         case let .App(message):
-            debug_log("App message: \(message)")
             let (updatedModel, command) = app.update(message, model)
             let modelChanged = !(updatedModel == model)
             model = updatedModel
@@ -134,12 +132,9 @@ public func application<Model: Equatable & Encodable, Message>(
     }
 
     let eventHandler = { (event: Event) in
-        debug_log("New event: \(event)")
         switch event {
         case let .Key(key):
-            debug_log("Key event: \(key)")
             if let node = view.viewFocused() {
-                debug_log("App has focused view")
                 // Send key event to node under cursor
                 var swallowed = false
                 if let content = node as? Text<Message> {
@@ -156,16 +151,13 @@ public func application<Model: Equatable & Encodable, Message>(
                 if !swallowed {
                     if let msg = keyboardSubscription?(key) {
                         async {
-                            debug_log("Key not captured, sending to app")
                             messageInput.send(value: .App(msg))
                         }
                     }
                 }
             } else {
-                debug_log("Checking for keyboard subscription")
                 if let msg = keyboardSubscription?(key) {
                     async {
-                        debug_log("Sending to app")
                         messageInput.send(value: .App(msg))
                     }
                 }
