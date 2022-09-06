@@ -5,8 +5,6 @@ enum Command<Msg> {
     case Command(Msg)
     case Commands([Cmd<Msg>])
     case Task(TimeInterval, () -> Msg)
-//    case Task(() -> Msg)
-//    case Process(() -> Msg)
     case Quit(QuitResult)
     case Terminal(CursorCommand)
 }

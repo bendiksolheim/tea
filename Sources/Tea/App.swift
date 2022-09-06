@@ -8,13 +8,6 @@ import Swifter
 let termQueue = DispatchQueue(label: "term.queue", qos: .background)
 let taskQueue = DispatchQueue(label: "task.queue", qos: .userInitiated)
 
-public enum Sub<Message> {
-    case Keyboard((KeyEvent) -> Message)
-    case Cursor((Cursor) -> Message)
-    case TerminalSize((Size) -> Message)
-    case None
-}
-
 enum AppEvent<Message> {
     case App(Message)
     case Cursor(CursorCommand)
@@ -73,6 +66,8 @@ public func application<Model: Equatable & Encodable, Message>(
     let cursorSubscription = getCursorSubscription(subscriptions: app.subscriptions)
 
     let (messageOutput, messageInput) = Signal<AppEvent<Message>, Never>.pipe()
+
+    setupClockSubscriptions(app.subscriptions, messageInput)
 
     messageOutput.observeValues { ev in
         switch ev {
@@ -250,7 +245,7 @@ func async(_ fn: @escaping () -> Void) {
 
 func getKeyboardSubscription<Message>(subscriptions: [Sub<Message>]) -> ((KeyEvent) -> Message)? {
     for subscription in subscriptions {
-        switch subscription {
+        switch subscription.sub {
         case let .Keyboard(fn):
             return fn
         default:
@@ -263,7 +258,7 @@ func getKeyboardSubscription<Message>(subscriptions: [Sub<Message>]) -> ((KeyEve
 
 func getTerminalResizeSubscription<Message>(subscriptions: [Sub<Message>]) -> ((Size) -> Message)? {
     for subscription in subscriptions {
-        switch subscription {
+        switch subscription.sub {
         case let .TerminalSize(fn):
             return fn
         default:
@@ -276,7 +271,7 @@ func getTerminalResizeSubscription<Message>(subscriptions: [Sub<Message>]) -> ((
 
 func getCursorSubscription<Message>(subscriptions: [Sub<Message>]) -> ((Cursor) -> Message)? {
     for subscription in subscriptions {
-        switch subscription {
+        switch subscription.sub {
         case let .Cursor(fn):
             return fn
         default:
@@ -285,6 +280,20 @@ func getCursorSubscription<Message>(subscriptions: [Sub<Message>]) -> ((Cursor) 
     }
 
     return nil
+}
+
+func setupClockSubscriptions<Message>(_ subscriptions: [Sub<Message>], _ messageChannel: Signal<AppEvent<Message>, Never>.Observer) {
+    for subscription in subscriptions {
+        switch subscription.sub {
+        case let .Clock(interval, fn):
+            Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { timer in
+                messageChannel.send(value: .App(fn(Date())))
+            }
+
+        default:
+            break
+        }
+    }
 }
 
 //func scroll(_ model: Model, _ steps: Int, _ viewHeight: Int, _ current: Int, _ terminalHeight: Int, _ view: View) -> (Model, Cmd<Message>) {

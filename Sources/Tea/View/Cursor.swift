@@ -23,4 +23,8 @@ public struct Cursor: Equatable, Encodable {
     public static func scroll<Msg>(_ x: Unit) -> Cmd<Msg> {
         Cmd(.Terminal(.Scroll(x)))
     }
+
+    public static func onMove<Msg>(_ fn: @escaping (Cursor) -> Msg) -> Sub<Msg> {
+        Sub(.Cursor(fn))
+    }
 }
